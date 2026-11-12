@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Baseball Counts & Batting Average Breakdown</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            statcast: {
+              base: '#080C14',
+              card: '#111726',
+              cardHover: '#161F33',
+              border: '#1E293B',
+              hitter: '#10B981',
+              hitterMuted: '#064e3b',
+              neutral: '#38BDF8',
+              pitcher: '#F59E0B',
+              cliff: '#EF4444',
+              cliffMuted: '#7f1d1d'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #080C14; }
+    ::-webkit-scrollbar-thumb { background: #1E293B; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #334155; }
+
+    .glow-hitter { box-shadow: 0 0 25px -4px rgba(16, 185, 129, 0.35); }
+    .glow-pitcher { box-shadow: 0 0 25px -4px rgba(245, 158, 11, 0.35); }
+    .glow-cliff { box-shadow: 0 0 25px -4px rgba(239, 68, 68, 0.35); }
+    .glow-neutral { box-shadow: 0 0 25px -4px rgba(56, 189, 248, 0.35); }
+  </style>
+</head>
+<body class="bg-statcast-base text-slate-100 min-h-screen font-sans selection:bg-emerald-500/30 selection:text-emerald-200">
+
+  <!-- Status Bar / Statcast Ticker -->
+  <aside aria-label="Statcast League Context" class="border-b border-statcast-border/80 bg-statcast-card/60 px-4 py-2 backdrop-blur text-xs font-mono text-slate-400 flex flex-wrap items-center justify-between gap-3">
+    <div class="flex items-center gap-2">
+      <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 font-semibold border border-emerald-500/20 text-[10px] tracking-wider uppercase">
+        <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+        Statcast Live Model
+      </span>
+      <span class="text-slate-600 hidden sm:inline">•</span>
+      <span>MLB Baseline BA: <strong class="text-slate-200">.248</strong></span>
+      <span class="text-slate-600">•</span>
+      <span>Baseline OBP: <strong class="text-slate-200">.318</strong></span>
+    </div>
+    <div class="flex items-center gap-3 text-[11px]">
+      <span class="text-slate-400 hidden md:inline">Universal Leverage & Strategic Matrix</span>
+      <span class="px-2 py-0.5 bg-slate-800/90 rounded border border-slate-700/80 font-mono text-emerald-400">180,000+ Plate Appearances</span>
+    </div>
+  </aside>
+
+  <!-- Header -->
+  <header class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-6">
+    <div class="flex flex-col md:flex-row md:items-end justify-between gap-6 pb-6 border-b border-statcast-border">
+      <div>
+        <div class="flex items-center gap-2 text-xs font-mono font-medium tracking-wider text-emerald-400 uppercase mb-2">
+          <i data-lucide="crosshair" class="w-4 h-4"></i>
+          Tactical Count Dynamics & Probability Matrix
+        </div>
+        <h1 class="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white flex items-center gap-3">
+          Baseball Counts &amp; Batting Average Breakdown
+        </h1>
+        <p class="mt-2 text-sm sm:text-base text-slate-400 max-w-2xl">
+          Examine the radical offensive swing between hitter leverage and the pitcher's domain, tracking how plate geometry and batting average collapse from <span class="text-emerald-400 font-medium">3-1 ambush</span> to the <span class="text-red-400 font-medium">0-2 cliff</span>.
+        </p>
+      </div>
+
+      <!-- Mode Selector -->
+      <div class="flex flex-col sm:flex-row items-start sm:items-center gap-2 bg-statcast-card p-1.5 rounded-xl border border-statcast-border shadow-inner self-start md:self-auto">
+        <button id="btn-final" onclick="setMode('final')" class="px-4 py-2 rounded-lg text-xs font-semibold font-mono tracking-wide transition-all flex items-center gap-2 bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20">
+          <i data-lucide="target" class="w-3.5 h-3.5"></i>
+          Final Pitch Splits (Contact/K)
+        </button>
+        <button id="btn-trajectory" onclick="setMode('trajectory')" class="px-4 py-2 rounded-lg text-xs font-semibold font-mono tracking-wide text-slate-400 hover:text-white transition-all flex items-center gap-2">
+          <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
+          Eventual At-Bat Trajectory
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Body -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-16 space-y-8">
+
+    <!-- Top Row: Interactive Matrix & Inspector Card -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- LEFT: The 4x3 Interactive Count Matrix (7 Cols) -->
+      <div class="lg:col-span-7 bg-statcast-card rounded-2xl border border-statcast-border p-5 sm:p-6 shadow-xl relative">
+        <div class="flex items-center justify-between mb-4">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="layout-grid" class="w-4 h-4 text-emerald-400"></i>
+              Interactive 4×3 Count Matrix
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Click any count to inspect situational tendencies, reticle coverage, and metrics.</p>
+          </div>
+          <!-- Legend Badges -->
+          <div class="hidden sm:flex items-center gap-2 text-[10px] font-mono">
+            <span class="inline-flex items-center gap-1 text-emerald-400"><span class="w-2 h-2 rounded-full bg-emerald-400"></span>Hitter</span>
+            <span class="inline-flex items-center gap-1 text-cyan-400"><span class="w-2 h-2 rounded-full bg-cyan-400"></span>Even</span>
+            <span class="inline-flex items-center gap-1 text-amber-400"><span class="w-2 h-2 rounded-full bg-amber-400"></span>Pitcher</span>
+            <span class="inline-flex items-center gap-1 text-red-400"><span class="w-2 h-2 rounded-full bg-red-400"></span>2-Strike Cliff</span>
+          </div>
+        </div>
+
+        <!-- Matrix Layout -->
+        <div class="overflow-x-auto pb-1">
+          <div class="min-w-[440px]">
+            <!-- Column Labels -->
+            <div class="grid grid-cols-4 gap-2 mb-2 font-mono text-xs font-semibold text-slate-400 text-center">
+              <div class="py-1 text-left pl-2 text-slate-500 font-normal">Balls \ Strikes</div>
+              <div class="py-1 bg-slate-800/40 rounded border border-slate-800/80 text-slate-300">0 Strikes</div>
+              <div class="py-1 bg-slate-800/40 rounded border border-slate-800/80 text-slate-300">1 Strike</div>
+              <div class="py-1 bg-red-950/20 rounded border border-red-900/40 text-red-400 flex items-center justify-center gap-1">
+                <i data-lucide="alert-triangle" class="w-3 h-3"></i> 2 Strikes
+              </div>
+            </div>
+
+            <!-- Rows container -->
+            <div id="matrix-grid" class="space-y-2">
+              <!-- Rendered via JS -->
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-5 pt-4 border-t border-statcast-border/60 flex flex-wrap items-center justify-between text-[11px] text-slate-400 font-mono gap-2">
+          <div class="flex items-center gap-1.5">
+            <i data-lucide="info" class="w-3.5 h-3.5 text-slate-400"></i>
+            <span>BA on &lt; 2 strikes reflects batted-balls put in play on that pitch.</span>
+          </div>
+          <button onclick="selectCount('3-1')" class="text-emerald-400 hover:text-emerald-300 transition-colors font-medium">
+            Jump to Most Dangerous Count (3-1) &rarr;
+          </button>
+        </div>
+      </div>
+
+      <!-- RIGHT: Detailed Situational Inspector (5 Cols) -->
+      <div id="inspector" class="lg:col-span-5 bg-gradient-to-b from-[#141C2C] to-statcast-card rounded-2xl border border-statcast-border p-5 sm:p-6 shadow-2xl relative transition-all">
+        <!-- Count Display Header -->
+        <div class="flex items-center justify-between border-b border-statcast-border/80 pb-4 mb-4">
+          <div class="flex items-center gap-3">
+            <div id="insp-count-box" class="w-14 h-14 rounded-xl border-2 flex items-center justify-center font-mono text-2xl font-black bg-emerald-500/20 border-emerald-500/60 text-emerald-400 glow-hitter">
+              3-1
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <span id="insp-category-badge" class="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                  Hitter's Advantage
+                </span>
+                <span id="insp-leverage-sub" class="text-xs text-slate-400 font-mono">Max Intent</span>
+              </div>
+              <h3 id="insp-title" class="text-lg font-bold text-white mt-0.5">The Pure Damage Count</h3>
+            </div>
+          </div>
+          <div class="text-right font-mono">
+            <div class="text-[10px] text-slate-400 uppercase">Leverage Index</div>
+            <div id="insp-li" class="text-lg font-bold text-emerald-400">2.4x Normal</div>
+          </div>
+        </div>
+
+        <!-- Metric Highlights -->
+        <div class="grid grid-cols-2 gap-3 mb-5">
+          <div class="bg-statcast-base/70 p-3.5 rounded-xl border border-statcast-border">
+            <div class="flex items-center justify-between text-slate-400 text-xs font-mono">
+              <span id="insp-avg-label">Final Pitch AVG</span>
+              <i data-lucide="gauge" class="w-3.5 h-3.5 text-slate-400"></i>
+            </div>
+            <div id="insp-avg-val" class="text-2xl sm:text-3xl font-mono font-black text-white mt-1">.364</div>
+            <div id="insp-avg-diff" class="text-[10px] text-emerald-400 mt-1 font-mono font-medium flex items-center gap-1">
+              <i data-lucide="arrow-up-right" class="w-3 h-3"></i> +116 pts above baseline
+            </div>
+          </div>
+
+          <div class="bg-statcast-base/70 p-3.5 rounded-xl border border-statcast-border">
+            <div class="flex items-center justify-between text-slate-400 text-xs font-mono">
+              <span>Eventual OBP</span>
+              <i data-lucide="shield-alert" class="w-3.5 h-3.5 text-slate-400"></i>
+            </div>
+            <div id="insp-obp-val" class="text-2xl sm:text-3xl font-mono font-black text-cyan-400 mt-1">.584</div>
+            <div id="insp-obp-sub" class="text-[10px] text-slate-400 mt-1 font-mono">Walk or hit in ~58% PAs</div>
+          </div>
+        </div>
+
+        <!-- Pitch Selection Expectancy Bar -->
+        <div class="mb-5 bg-statcast-base/50 p-4 rounded-xl border border-statcast-border/80">
+          <div class="flex items-center justify-between text-xs font-mono mb-2">
+            <span class="text-slate-300 font-semibold flex items-center gap-1.5">
+              <i data-lucide="activity" class="w-3.5 h-3.5 text-emerald-400"></i> Pitcher Expected Arsenal
+            </span>
+            <span id="insp-pitch-split" class="text-emerald-400 font-bold">Fastball 71% | Secondary 29%</span>
+          </div>
+          <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden flex">
+            <div id="insp-bar-fb" class="h-full bg-emerald-500 transition-all duration-500" style="width: 71%"></div>
+            <div id="insp-bar-sec" class="h-full bg-amber-500 transition-all duration-500" style="width: 29%"></div>
+          </div>
+          <p id="insp-pitch-notes" class="text-xs text-slate-300 mt-2.5 leading-relaxed">
+            Pitcher cannot surrender Ball 4. Secondary usage drops drastically to avoid walks; fastballs are grooved at peak rates.
+          </p>
+        </div>
+
+        <!-- Strike Zone Visualization & Approach Focus -->
+        <div class="bg-statcast-base/50 p-4 rounded-xl border border-statcast-border/80 space-y-3">
+          <div class="flex items-center justify-between text-xs font-mono">
+            <span class="text-slate-300 font-semibold flex items-center gap-1.5">
+              <i data-lucide="crosshair" class="w-3.5 h-3.5 text-cyan-400"></i> Hitter's Tactical Objective
+            </span>
+            <span id="insp-zone-label" class="text-emerald-400 font-medium">Zone: 6-Inch Sweet Spot</span>
+          </div>
+
+          <div class="flex items-start gap-3">
+            <!-- Strike Zone Box Graphic -->
+            <div id="insp-zone-container" class="w-16 h-20 rounded-md border-2 border-dashed border-emerald-400/60 bg-emerald-500/10 flex-shrink-0 flex items-center justify-center relative">
+              <div id="insp-zone-reticle" class="w-7 h-7 rounded bg-emerald-400/40 border border-emerald-400 flex items-center justify-center transition-all duration-300">
+                <span class="w-1.5 h-1.5 rounded-full bg-emerald-300"></span>
+              </div>
+            </div>
+            <div>
+              <h4 id="insp-tactic-head" class="text-xs font-bold text-white uppercase tracking-wide">Ambush Dead-Red Fastball</h4>
+              <p id="insp-tactic-body" class="text-xs text-slate-300 mt-1 leading-relaxed">
+                Do not expand. Hunt a fastball in your personal power zone (middle-in). Take any borderline strike on the black and wait for a mistake.
+              </p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Middle Row: Chart Comparison & Two-Strike Cliff -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+      <!-- Chart: 12 Counts Overview (8 Cols) -->
+      <div class="lg:col-span-8 bg-statcast-card rounded-2xl border border-statcast-border p-5 sm:p-6 shadow-xl">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
+          <div>
+            <h2 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="bar-chart-3" class="w-4 h-4 text-emerald-400"></i>
+              League-Wide Batting Average by Count
+            </h2>
+            <p class="text-xs text-slate-400">Comparing expected final pitch average against the catastrophic collapse at 2 strikes.</p>
+          </div>
+          <div class="flex items-center gap-3 text-xs font-mono">
+            <span class="flex items-center gap-1.5 text-slate-300">
+              <span class="w-3 h-3 rounded-sm bg-emerald-500"></span> Final Pitch
+            </span>
+            <span class="flex items-center gap-1.5 text-slate-400">
+              <span class="w-3 h-3 rounded-sm bg-cyan-500/50"></span> Trajectory BA
+            </span>
+          </div>
+        </div>
+
+        <div class="h-72 w-full relative">
+          <canvas id="countsChart"></canvas>
+        </div>
+      </div>
+
+      <!-- The Two-Strike Cliff Breakdown (4 Cols) -->
+      <div class="lg:col-span-4 bg-gradient-to-br from-red-950/20 via-statcast-card to-statcast-card rounded-2xl border border-red-900/40 p-5 sm:p-6 flex flex-col justify-between shadow-xl">
+        <div>
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-1 rounded-md text-[10px] font-mono font-bold tracking-wider uppercase bg-red-500/20 text-red-400 border border-red-500/30">
+              Statistical Phenomenon
+            </span>
+            <i data-lucide="trending-down" class="w-5 h-5 text-red-400"></i>
+          </div>
+
+          <h3 class="text-xl font-black text-white mt-3">The "Two-Strike Cliff"</h3>
+          <p class="text-xs text-slate-300 mt-2 leading-relaxed">
+            Offensive production does not decline gradually in baseball; it drops off a mathematical cliff the exact microsecond a batter receives strike two.
+          </p>
+
+          <div class="mt-4 space-y-3 font-mono text-xs">
+            <div class="bg-statcast-base/80 p-3 rounded-lg border border-statcast-border flex items-center justify-between">
+              <div>
+                <div class="text-[10px] text-slate-400 uppercase">0 &amp; 1 Strike Average</div>
+                <div class="text-lg font-bold text-emerald-400">.334 AVG</div>
+              </div>
+              <div class="text-right text-[10px] text-emerald-300">High driving intent</div>
+            </div>
+
+            <div class="bg-statcast-base/80 p-3 rounded-lg border border-red-900/40 flex items-center justify-between">
+              <div>
+                <div class="text-[10px] text-slate-400 uppercase">2-Strike Counts Average</div>
+                <div class="text-lg font-bold text-red-400">.172 AVG</div>
+              </div>
+              <div class="text-right text-[10px] text-red-300">-162 pt collapse</div>
+            </div>
+
+            <div class="bg-statcast-base/80 p-3 rounded-lg border border-statcast-border flex items-center justify-between">
+              <div>
+                <div class="text-[10px] text-slate-400 uppercase">Strikeout Frequency</div>
+                <div class="text-lg font-bold text-amber-400">8.4x Higher</div>
+              </div>
+              <div class="text-right text-[10px] text-slate-400">Whiff rate triples</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-5 pt-4 border-t border-red-900/30 text-xs text-slate-400 leading-normal">
+          <strong class="text-slate-200">The Mechanical Driver:</strong> With 2 strikes, hitters must abandon hunt zones and defend all 17 inches of home plate plus wipeout sliders in the dirt.
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Bottom Row: Dugout & Tactical Strategic Tenets -->
+    <div class="bg-statcast-card rounded-2xl border border-statcast-border p-6 shadow-xl">
+      <div class="flex items-center gap-2 mb-4">
+        <i data-lucide="compass" class="w-5 h-5 text-emerald-400"></i>
+        <h2 class="text-lg font-bold text-white">Universal Hitting &amp; Pitching Principles Across Counts</h2>
+      </div>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+        <div class="p-4 rounded-xl bg-statcast-base/50 border border-statcast-border hover:border-emerald-500/40 transition-colors">
+          <div class="flex items-center gap-2 text-emerald-400 text-xs font-mono font-bold uppercase mb-2">
+            <span class="w-6 h-6 rounded-md bg-emerald-500/20 flex items-center justify-center text-xs">1</span>
+            Never Concede Pitch 1
+          </div>
+          <h4 class="text-sm font-bold text-white">The First Pitch is a Hitter's Count</h4>
+          <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+            First-pitch batting average (.334) matches a 2-0 count. Taking a fastball directly down the pipe on 0-0 sacrifices the best driving pitch of the plate appearance and forces you into a 0-1 pitcher's duel.
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-statcast-base/50 border border-statcast-border hover:border-amber-500/40 transition-colors">
+          <div class="flex items-center gap-2 text-amber-400 text-xs font-mono font-bold uppercase mb-2">
+            <span class="w-6 h-6 rounded-md bg-amber-500/20 flex items-center justify-center text-xs">2</span>
+            The 1-1 Inflection Point
+          </div>
+          <h4 class="text-sm font-bold text-white">The Fork in the Road</h4>
+          <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+            A 1-1 count determines the fate of the at-bat. Winning the pitch pushes you to 2-1 (.332 AVG); losing it drops you straight to 1-2 (.164 AVG). Pitchers throw offspeed at 52% rates here to induce weak contact.
+          </p>
+        </div>
+
+        <div class="p-4 rounded-xl bg-statcast-base/50 border border-statcast-border hover:border-red-500/40 transition-colors">
+          <div class="flex items-center gap-2 text-red-400 text-xs font-mono font-bold uppercase mb-2">
+            <span class="w-6 h-6 rounded-md bg-red-500/20 flex items-center justify-center text-xs">3</span>
+            Two-Strike Approach
+          </div>
+          <h4 class="text-sm font-bold text-white">Choke Up, Battle, Spoil</h4>
+          <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+            Hitters should widen their base 2 inches, choke up 1 inch, and shorten their stride. Do not try to hit home runs; fight off tough spin with fouls and poke anything outer-half into the opposite field.
+          </p>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Application Logic -->
+  <script>
+    const dataModel = {
+      '3-0': {
+        balls: 3, strikes: 0,
+        finalAvg: .382, trajAvg: .308, obp: .745,
+        badge: 'Absolute Leverage', category: 'Extreme Hitter Advantage',
+        colorClass: 'emerald', li: '3.1x', fb: 78, sec: 22,
+        title: 'Pitcher Emergency Mode',
+        pitchNotes: 'Pitcher cannot risk walking the batter. Fastballs thrown at ~78% in the heart of the zone.',
+        tacticHead: 'Strict Green Light / Auto-Take',
+        tacticBody: 'At high school and travel levels, this is an automatic take unless given the explicit green light on a fastball down the middle.',
+        zoneSize: 'w-6 h-6', zoneLabel: 'Zone: Center Square Only'
+      },
+      '3-1': {
+        balls: 3, strikes: 1,
+        finalAvg: .364, trajAvg: .294, obp: .584,
+        badge: 'Lethal Damage', category: 'Prime Driving Count',
+        colorClass: 'emerald', li: '2.4x', fb: 71, sec: 29,
+        title: 'The Pure Damage Count',
+        pitchNotes: 'Pitcher cannot surrender Ball 4. Secondary pitches are rare; fastball expectancy reaches its aggressive peak.',
+        tacticHead: 'Ambush Dead-Red Fastball',
+        tacticBody: 'Shrink your zone to a 6-inch square in your favorite quadrant. Swing with 100% intent and drive the ball for extra bases.',
+        zoneSize: 'w-7 h-7', zoneLabel: 'Zone: 6-Inch Sweet Spot'
+      },
+      '2-0': {
+        balls: 2, strikes: 0,
+        finalAvg: .346, trajAvg: .281, obp: .418,
+        badge: 'Ambush Mode', category: 'Hitter Leverage',
+        colorClass: 'emerald', li: '1.9x', fb: 67, sec: 33,
+        title: 'The Fastball Trap',
+        pitchNotes: 'Pitchers fall behind and lean heavily on heaters to avoid falling into a 3-0 hole.',
+        tacticHead: 'Hunt One Location',
+        tacticBody: 'Look strictly middle-in. Ignore borderline strikes on the edges and commit to putting a barrel on a fastball.',
+        zoneSize: 'w-8 h-8', zoneLabel: 'Zone: Middle Quadrants'
+      },
+      '1-0': {
+        balls: 1, strikes: 0,
+        finalAvg: .338, trajAvg: .268, obp: .350,
+        badge: 'Early Edge', category: 'Modest Hitter Edge',
+        colorClass: 'neutral', li: '1.2x', fb: 58, sec: 42,
+        title: 'Early Baseline Advantage',
+        pitchNotes: 'Pitcher is under pressure not to drop behind 2-0. Strike frequency rises.',
+        tacticHead: 'Elevate & Drive',
+        tacticBody: 'Hunt pitches in the upper half of the strike zone to drive into the gaps.',
+        zoneSize: 'w-10 h-12', zoneLabel: 'Zone: 70% Plate Width'
+      },
+      '0-0': {
+        balls: 0, strikes: 0,
+        finalAvg: .334, trajAvg: .248, obp: .318,
+        badge: 'Neutral', category: 'Baseline Count',
+        colorClass: 'neutral', li: '1.0x', fb: 56, sec: 44,
+        title: 'First-Pitch Strategy',
+        pitchNotes: 'Pitchers throw first-pitch strikes ~60% of the time. Mostly fastballs to establish rhythm.',
+        tacticHead: 'Attack First-Pitch Strikes',
+        tacticBody: 'Never give up pitch one for free. If the pitcher grooves a fastball down the middle, punish it.',
+        zoneSize: 'w-10 h-12', zoneLabel: 'Zone: Standard Strike Zone'
+      },
+      '2-1': {
+        balls: 2, strikes: 1,
+        finalAvg: .332, trajAvg: .262, obp: .358,
+        badge: 'Hitter Lead', category: 'Controlled Advantage',
+        colorClass: 'emerald', li: '1.4x', fb: 59, sec: 41,
+        title: 'Controlled Aggression',
+        pitchNotes: 'Pitcher wants a strike to avoid 3-1, but can gamble on offspeed if they have good command.',
+        tacticHead: 'Drive Quality Strikes',
+        tacticBody: 'Stay balanced for changeups, but remain aggressive on anything elevated in the zone.',
+        zoneSize: 'w-9 h-11', zoneLabel: 'Zone: In-Zone Core'
+      },
+      '1-1': {
+        balls: 1, strikes: 1,
+        finalAvg: .318, trajAvg: .236, obp: .302,
+        badge: 'Pivot Count', category: 'The Crossroads',
+        colorClass: 'neutral', li: '1.6x', fb: 48, sec: 52,
+        title: 'The Great Crossroads',
+        pitchNotes: 'Secondary pitches surpass fastballs for the first time. Pitcher is desperate to push batter to 1-2.',
+        tacticHead: 'Anticipate Breaking Ball',
+        tacticBody: 'Do not lunge at early movement. Look for a mistake up in the zone and do not chase out of the zone.',
+        zoneSize: 'w-11 h-13', zoneLabel: 'Zone: Strict 17 Inches'
+      },
+      '0-1': {
+        balls: 0, strikes: 1,
+        finalAvg: .312, trajAvg: .219, obp: .278,
+        badge: 'Pitcher Edge', category: 'Pitcher Leverage',
+        colorClass: 'pitcher', li: '1.3x', fb: 49, sec: 51,
+        title: 'Expanding The Corners',
+        pitchNotes: 'Pitcher can paint the corners and mix breaking pitches low and away.',
+        tacticHead: 'Stay Selective',
+        tacticBody: 'Do not chase pitches off the edges. Force the pitcher to throw another strike.',
+        zoneSize: 'w-11 h-13', zoneLabel: 'Zone: Standard Plate'
+      },
+      '3-2': {
+        balls: 3, strikes: 2,
+        finalAvg: .218, trajAvg: .218, obp: .476,
+        badge: 'Full Count', category: 'All-Or-Nothing Showdown',
+        colorClass: 'pitcher', li: '2.8x', fb: 54, sec: 46,
+        title: 'Maximum Pressure Standoff',
+        pitchNotes: 'Both strikeout and walk risks are maximum. Fastball frequency creeps back up to avoid ball four.',
+        tacticHead: 'Protect Edges & Spoil',
+        tacticBody: 'Defend close pitches with two-strike foul balls. Take anything clearly out of the strike zone for the walk.',
+        zoneSize: 'w-13 h-15', zoneLabel: 'Zone: Full Plate + Corners'
+      },
+      '2-2': {
+        balls: 2, strikes: 2,
+        finalAvg: .188, trajAvg: .188, obp: .285,
+        badge: '2-Strike Danger', category: 'Two-Strike Battle',
+        colorClass: 'cliff', li: '1.7x', fb: 45, sec: 55,
+        title: 'The Expansion Trap',
+        pitchNotes: 'Pitchers will throw breaking balls in the dirt and high fastballs out of the zone.',
+        tacticHead: 'Shorten Up & Battle',
+        tacticBody: 'Choke up, widen your base, and put the ball in play. Protect against offspeed away.',
+        zoneSize: 'w-14 h-16', zoneLabel: 'Zone: Expanded Coverage'
+      },
+      '1-2': {
+        balls: 1, strikes: 2,
+        finalAvg: .164, trajAvg: .164, obp: .214,
+        badge: 'Severe Cliff', category: 'High Whiff Risk',
+        colorClass: 'cliff', li: '1.9x', fb: 40, sec: 60,
+        title: 'Wipeout Pitch Incoming',
+        pitchNotes: 'Pitchers throw 60% secondary pitches looking for defensive, off-balance swings.',
+        tacticHead: 'Let Ball Travel Deep',
+        tacticBody: 'Do not commit early. Spoil tough pitches with foul balls until a mistake enters the zone.',
+        zoneSize: 'w-15 h-17', zoneLabel: 'Zone: 17 Inches + Chase'
+      },
+      '0-2': {
+        balls: 0, strikes: 2,
+        finalAvg: .148, trajAvg: .148, obp: .192,
+        badge: 'Survival Mode', category: 'Extreme Pitcher Dominance',
+        colorClass: 'cliff', li: '2.1x', fb: 35, sec: 65,
+        title: 'Pure Survival Mode',
+        pitchNotes: 'Pitchers throw out of the strike zone ~70% of the time expecting anxious, defensive swings.',
+        tacticHead: 'Emergency Contact Focus',
+        tacticBody: 'Shorten swing entirely. Punch the ball through the infield or poke it opposite field. Eliminate the strikeout.',
+        zoneSize: 'w-16 h-18', zoneLabel: 'Zone: Total Plate Defense'
+      }
+    };
+
+    let activeCountKey = '3-1';
+    let currentMode = 'final'; // 'final' or 'trajectory'
+    let chartInstance = null;
+
+    const chartOrder = ['3-0', '3-1', '2-0', '1-0', '0-0', '2-1', '1-1', '0-1', '3-2', '2-2', '1-2', '0-2'];
+
+    function renderMatrix() {
+      const container = document.getElementById('matrix-grid');
+      container.innerHTML = '';
+
+      const ballRows = [3, 2, 1, 0];
+      const strikeCols = [0, 1, 2];
+
+      ballRows.forEach(balls => {
+        const row = document.createElement('div');
+        row.className = 'grid grid-cols-4 gap-2 items-center';
+
+        const rowLabel = document.createElement('div');
+        rowLabel.className = 'text-xs font-mono font-bold text-slate-400 pl-2 flex items-center gap-1.5';
+        rowLabel.innerHTML = `<span class="w-2 h-2 rounded-full ${balls >= 2 ? 'bg-emerald-400' : 'bg-slate-600'}"></span> ${balls} Ball${balls === 1 ? '' : 's'}`;
+        row.appendChild(rowLabel);
+
+        strikeCols.forEach(strikes => {
+          const key = `${balls}-${strikes}`;
+          const item = dataModel[key];
+          const isSelected = key === activeCountKey;
+
+          let borderStyle = 'border-slate-800 hover:border-slate-600 bg-statcast-base/70';
+          let textColor = 'text-slate-300';
+          let avgColor = 'text-white';
+
+          if (item.colorClass === 'emerald') {
+            borderStyle = 'border-emerald-500/25 bg-emerald-950/20 hover:border-emerald-500/60';
+            textColor = 'text-emerald-400';
+            avgColor = 'text-emerald-300';
+          } else if (item.colorClass === 'pitcher') {
+            borderStyle = 'border-amber-500/25 bg-amber-950/20 hover:border-amber-500/60';
+            textColor = 'text-amber-400';
+            avgColor = 'text-amber-300';
+          } else if (item.colorClass === 'cliff') {
+            borderStyle = 'border-red-500/25 bg-red-950/20 hover:border-red-500/60';
+            textColor = 'text-red-400';
+            avgColor = 'text-red-300';
+          } else if (item.colorClass === 'neutral') {
+            borderStyle = 'border-cyan-500/25 bg-cyan-950/20 hover:border-cyan-500/60';
+            textColor = 'text-cyan-400';
+            avgColor = 'text-cyan-300';
+          }
+
+          if (isSelected) {
+            borderStyle += ' ring-2 ring-emerald-400 border-emerald-400 shadow-lg';
+            if (item.colorClass === 'cliff') borderStyle += ' ring-red-400 border-red-400';
+          }
+
+          const btn = document.createElement('button');
+          btn.className = `p-2.5 rounded-xl border text-left transition-all duration-200 cursor-pointer flex flex-col justify-between ${borderStyle}`;
+          btn.onclick = () => selectCount(key);
+
+          const displayAvg = currentMode === 'final'
+            ? item.finalAvg.toFixed(3).replace(/^0+/, '')
+            : item.trajAvg.toFixed(3).replace(/^0+/, '');
+
+          btn.innerHTML = `
+            <div class="flex items-center justify-between w-full">
+              <span class="font-mono text-xs font-bold text-slate-200">${key}</span>
+              <span class="text-[9px] font-mono font-medium px-1.5 py-0.5 rounded ${textColor} bg-slate-900/60 border border-slate-700/50">
+                ${item.badge}
+              </span>
+            </div>
+            <div class="mt-2 flex items-baseline justify-between">
+              <span class="text-[10px] font-mono text-slate-400">${currentMode === 'final' ? 'BIP AVG' : 'PA AVG'}</span>
+              <span class="font-mono text-base font-extrabold ${avgColor}">${displayAvg}</span>
+            </div>
+          `;
+
+          row.appendChild(btn);
+        });
+
+        container.appendChild(row);
+      });
+    }
+
+    function updateInspector(key) {
+      const d = dataModel[key];
+      if (!d) return;
+
+      activeCountKey = key;
+
+      const countBox = document.getElementById('insp-count-box');
+      countBox.innerText = key;
+
+      const badge = document.getElementById('insp-category-badge');
+      badge.innerText = d.category;
+
+      document.getElementById('insp-li').innerText = d.li;
+      document.getElementById('insp-title').innerText = d.title;
+
+      // Glow styling
+      countBox.className = 'w-14 h-14 rounded-xl border-2 flex items-center justify-center font-mono text-2xl font-black transition-all ';
+      if (d.colorClass === 'emerald') {
+        countBox.className += 'bg-emerald-500/20 border-emerald-500/60 text-emerald-400 glow-hitter';
+        badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+      } else if (d.colorClass === 'pitcher') {
+        countBox.className += 'bg-amber-500/20 border-amber-500/60 text-amber-400 glow-pitcher';
+        badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase bg-amber-500/20 text-amber-400 border border-amber-500/30';
+      } else if (d.colorClass === 'cliff') {
+        countBox.className += 'bg-red-500/20 border-red-500/60 text-red-400 glow-cliff';
+        badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase bg-red-500/20 text-red-400 border border-red-500/30';
+      } else {
+        countBox.className += 'bg-cyan-500/20 border-cyan-500/60 text-cyan-400 glow-neutral';
+        badge.className = 'px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold tracking-wider uppercase bg-cyan-500/20 text-cyan-400 border border-cyan-500/30';
+      }
+
+      // Metrics
+      const avgVal = currentMode === 'final' ? d.finalAvg : d.trajAvg;
+      document.getElementById('insp-avg-val').innerText = avgVal.toFixed(3).replace(/^0+/, '');
+
+      const diff = Math.round((avgVal - 0.248) * 1000);
+      const diffElem = document.getElementById('insp-avg-diff');
+      if (diff >= 0) {
+        diffElem.innerHTML = `<i data-lucide="arrow-up-right" class="w-3 h-3 text-emerald-400"></i> +${diff} pts above baseline`;
+        diffElem.className = 'text-[10px] text-emerald-400 mt-1 font-mono font-medium flex items-center gap-1';
+      } else {
+        diffElem.innerHTML = `<i data-lucide="arrow-down-right" class="w-3 h-3 text-red-400"></i> ${diff} pts below baseline`;
+        diffElem.className = 'text-[10px] text-red-400 mt-1 font-mono font-medium flex items-center gap-1';
+      }
+
+      document.getElementById('insp-obp-val').innerText = d.obp.toFixed(3).replace(/^0+/, '');
+
+      // Pitch expectancy
+      document.getElementById('insp-pitch-split').innerText = `Fastball ${d.fb}% | Secondary ${d.sec}%`;
+      document.getElementById('insp-bar-fb').style.width = `${d.fb}%`;
+      document.getElementById('insp-bar-sec').style.width = `${d.sec}%`;
+      document.getElementById('insp-pitch-notes').innerText = d.pitchNotes;
+
+      // Reticle & Zone
+      document.getElementById('insp-zone-label').innerText = d.zoneLabel;
+      document.getElementById('insp-tactic-head').innerText = d.tacticHead;
+      document.getElementById('insp-tactic-body').innerText = d.tacticBody;
+
+      const reticle = document.getElementById('insp-zone-reticle');
+      const zoneContainer = document.getElementById('insp-zone-container');
+
+      if (d.strikes === 2) {
+        reticle.className = 'w-12 h-16 rounded border border-red-400 bg-red-400/20 flex items-center justify-center transition-all duration-300';
+        zoneContainer.className = 'w-16 h-20 rounded-md border-2 border-dashed border-red-500/60 bg-red-500/10 flex-shrink-0 flex items-center justify-center relative';
+      } else if (d.balls >= 2 && d.strikes <= 1) {
+        reticle.className = 'w-6 h-6 rounded border border-emerald-400 bg-emerald-400/40 flex items-center justify-center transition-all duration-300';
+        zoneContainer.className = 'w-16 h-20 rounded-md border-2 border-dashed border-emerald-400/60 bg-emerald-500/10 flex-shrink-0 flex items-center justify-center relative';
+      } else {
+        reticle.className = 'w-9 h-11 rounded border border-cyan-400 bg-cyan-400/30 flex items-center justify-center transition-all duration-300';
+        zoneContainer.className = 'w-16 h-20 rounded-md border-2 border-dashed border-cyan-400/60 bg-cyan-500/10 flex-shrink-0 flex items-center justify-center relative';
+      }
+
+      lucide.createIcons();
+    }
+
+    function selectCount(key) {
+      activeCountKey = key;
+      renderMatrix();
+      updateInspector(key);
+      if (chartInstance) {
+        const idx = chartOrder.indexOf(key);
+        if (idx !== -1) {
+          chartInstance.setActiveElements([{ datasetIndex: 0, index: idx }]);
+          chartInstance.render();
+        }
+      }
+    }
+
+    function setMode(mode) {
+      currentMode = mode;
+      const btnFinal = document.getElementById('btn-final');
+      const btnTraj = document.getElementById('btn-trajectory');
+      const avgLabel = document.getElementById('insp-avg-label');
+
+      if (mode === 'final') {
+        btnFinal.className = 'px-4 py-2 rounded-lg text-xs font-semibold font-mono tracking-wide transition-all flex items-center gap-2 bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20';
+        btnTraj.className = 'px-4 py-2 rounded-lg text-xs font-semibold font-mono tracking-wide text-slate-400 hover:text-white transition-all flex items-center gap-2';
+        avgLabel.innerText = 'Final Pitch AVG';
+      } else {
+        btnTraj.className = 'px-4 py-2 rounded-lg text-xs font-semibold font-mono tracking-wide transition-all flex items-center gap-2 bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20';
+        btnFinal.className = 'px-4 py-2 rounded-lg text-xs font-semibold font-mono tracking-wide text-slate-400 hover:text-white transition-all flex items-center gap-2';
+        avgLabel.innerText = 'Eventual At-Bat AVG';
+      }
+
+      renderMatrix();
+      updateInspector(activeCountKey);
+      if (chartInstance) chartInstance.update();
+    }
+
+    function initChart() {
+      const ctx = document.getElementById('countsChart').getContext('2d');
+
+      const finalValues = chartOrder.map(k => dataModel[k].finalAvg);
+      const trajValues = chartOrder.map(k => dataModel[k].trajAvg);
+
+      const backgroundColors = chartOrder.map(k => {
+        const item = dataModel[k];
+        if (item.strikes === 2) return 'rgba(239, 68, 68, 0.85)';
+        if (item.balls > item.strikes) return 'rgba(16, 185, 129, 0.85)';
+        return 'rgba(56, 189, 248, 0.85)';
+      });
+
+      chartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: chartOrder,
+          datasets: [
+            {
+              label: 'Final Pitch Batting Average',
+              data: finalValues,
+              backgroundColor: backgroundColors,
+              borderRadius: 6,
+              borderSkipped: false,
+              barPercentage: 0.75,
+              categoryPercentage: 0.8
+            },
+            {
+              label: 'Eventual Trajectory BA',
+              data: trajValues,
+              type: 'line',
+              borderColor: '#38BDF8',
+              backgroundColor: 'rgba(56, 189, 248, 0.1)',
+              borderWidth: 2,
+              tension: 0.35,
+              pointBackgroundColor: '#38BDF8',
+              pointRadius: 4,
+              pointHoverRadius: 6
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: { mode: 'index', intersect: false },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#111726',
+              titleColor: '#F8FAFC',
+              bodyColor: '#CBD5E1',
+              borderColor: '#1E293B',
+              borderWidth: 1,
+              padding: 12,
+              callbacks: {
+                label: function(context) {
+                  return ` ${context.dataset.label}: .${Math.round(context.parsed.y * 1000)}`;
+                }
+              }
+            }
+          },
+          scales: {
+            y: {
+              min: .100,
+              max: .420,
+              grid: { color: 'rgba(30, 41, 59, 0.6)' },
+              ticks: {
+                color: '#64748B',
+                font: { family: 'JetBrains Mono', size: 10 },
+                callback: function(v) { return '.' + (v * 1000).toFixed(0); }
+              }
+            },
+            x: {
+              grid: { display: false },
+              ticks: {
+                color: '#94A3B8',
+                font: { family: 'JetBrains Mono', weight: 'bold', size: 11 }
+              }
+            }
+          },
+          onClick: (evt, activeElements) => {
+            if (activeElements.length > 0) {
+              const idx = activeElements[0].index;
+              selectCount(chartOrder[idx]);
+            }
+          }
+        }
+      });
+    }
+
+    window.onload = function() {
+      lucide.createIcons();
+      renderMatrix();
+      updateInspector('3-1');
+      initChart();
+    };
+  </script>
+</body>
+</html>
